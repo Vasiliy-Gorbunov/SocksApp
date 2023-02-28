@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import me.gorbunov.socks.model.Color;
 import me.gorbunov.socks.model.Size;
 import me.gorbunov.socks.model.SocksBatch;
+import me.gorbunov.socks.model.exceptions.IncorrectArgumentException;
 import me.gorbunov.socks.model.exceptions.InsufficientQuantityException;
 import me.gorbunov.socks.services.impl.SocksServiceImpl;
 import org.springframework.http.ResponseEntity;
@@ -37,28 +38,58 @@ public class SocksController {
                                                  @RequestParam Size size,
                                                  @RequestParam(required = false, defaultValue = "0") int minCotton,
                                                  @RequestParam(required = false, defaultValue = "100") int maxCotton) {
-        return ResponseEntity.ok().body(socksService.getSocksCount(color, size, minCotton, maxCotton));
+        if (minCotton >= 0 && minCotton <= 100 && maxCotton >= 0 && maxCotton <= 100) {
+            return ResponseEntity.ok().body(socksService.getSocksCount(color, size, minCotton, maxCotton));
+        }
+        return ResponseEntity.badRequest().build();
     }
 
     @PostMapping("/")
+    @Operation(
+            summary = "Добавление партии носков на склад",
+            description = "Введите параметры носков в теле запроса, чтобы добавить их на склад"
+    )
     @ApiResponse(responseCode = "200", description = "Удалось добавить приход.")
-    public ResponseEntity<Void> addSocksToStorage(@RequestBody SocksBatch socks) {
-        socksService.addSocks(socks.getSocks().getColor(), socks.getSocks().getSize(), socks.getSocks().getCottonPercent(), socks.getQuantity());
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Object> addSocksToStorage(@RequestBody SocksBatch socks) {
+        try {
+            socksService.addSocks(socks.getSocks().getColor(), socks.getSocks().getSize(), socks.getSocks().getCottonPercent(), socks.getQuantity());
+            return ResponseEntity.ok().build();
+        } catch (IncorrectArgumentException e) {
+            e.getStackTrace();
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @PutMapping("/")
+    @Operation(
+            summary = "Отпуск носков со склада",
+            description = "Введите параметры носков в теле запроса, чтобы отпустить их со склада"
+    )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Удалось произвести отпуск носков со склада."),
             @ApiResponse(responseCode = "400", description = "Товара нет на складе в нужном количестве или параметры запроса имеют некорректный формат.")
     })
-    public ResponseEntity<Void> releaseSocksFromStorage(@RequestBody SocksBatch socks) {
+    public ResponseEntity<Object> releaseSocksFromStorage(@RequestBody SocksBatch socks) {
+        return removeSocks(socks);
+    }
+
+    @DeleteMapping("/")
+    @Operation(
+            summary = "Списание бракованных носков со склада",
+            description = "Введите параметры носков в теле запроса, чтобы списать их со склада"
+    )
+    @ApiResponse(responseCode = "200", description = "Запрос выполнен, товар списан со склада.")
+    public ResponseEntity<Object> deleteDefectSocksFromStorage(@RequestBody SocksBatch socks) {
+        return removeSocks(socks);
+    }
+
+    private ResponseEntity<Object> removeSocks(@RequestBody SocksBatch socks) {
         try {
             socksService.releaseSocks(socks.getSocks().getColor(), socks.getSocks().getSize(), socks.getSocks().getCottonPercent(), socks.getQuantity());
             return ResponseEntity.ok().build();
-        } catch (InsufficientQuantityException e) {
+        } catch (InsufficientQuantityException | IncorrectArgumentException e) {
             e.getStackTrace();
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 }
